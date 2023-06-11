@@ -22,6 +22,7 @@ import * as path from 'path'
 import { AcceptLanguageResolver, I18nModule, QueryResolver } from 'nestjs-i18n'
 import { BillingModule } from './billing/billing.module'
 import { AuthenticationModule } from './authentication/authentication.module'
+import { CacheModule } from '@nestjs/cache-manager'
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { AuthenticationModule } from './authentication/authentication.module'
       ),
     }),
     BillingModule,
+    CacheModule.register(),
   ],
   controllers: [AppController],
   providers: [AppService],
