@@ -63,7 +63,9 @@ import { CacheModule } from '@nestjs/cache-manager'
       ),
     }),
     BillingModule,
-    CacheModule.register(),
+    CacheModule.register({
+      isGlobal: true,
+    }),
   ],
   controllers: [AppController],
   providers: [AppService],
