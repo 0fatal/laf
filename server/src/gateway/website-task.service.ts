@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
-import { ServerConfig, TASK_LOCK_INIT_TIME } from 'src/constants'
+import {
+  CN_PUBLISHED_WEBSITE_HOSTING,
+  ServerConfig,
+  TASK_LOCK_INIT_TIME,
+} from 'src/constants'
 import { SystemDatabase } from 'src/system-database'
 import { RegionService } from 'src/region/region.service'
 import * as assert from 'node:assert'
@@ -11,6 +15,7 @@ import { isConditionTrue } from 'src/utils/getter'
 import { WebsiteHosting } from 'src/website/entities/website'
 import { DomainPhase, DomainState } from './entities/runtime-domain'
 import { BucketDomain } from './entities/bucket-domain'
+import { DatabaseService } from 'src/database/database.service'
 
 @Injectable()
 export class WebsiteTaskService {
@@ -22,6 +27,7 @@ export class WebsiteTaskService {
     private readonly regionService: RegionService,
     private readonly apisixService: ApisixService,
     private readonly certService: ApisixCustomCertService,
+    private readonly databaseService: DatabaseService,
   ) {}
 
   @Cron(CronExpression.EVERY_SECOND)
@@ -159,6 +165,8 @@ export class WebsiteTaskService {
       },
     )
 
+    await this.publish(site)
+
     this.logger.log(`update website phase to 'Created': ${site._id}`)
   }
 
@@ -232,6 +240,8 @@ export class WebsiteTaskService {
         },
       },
     )
+
+    await this.unpublish(site)
 
     this.logger.log(`update website phase to 'Deleted': ${site._id}`)
   }
@@ -328,5 +338,37 @@ export class WebsiteTaskService {
     await db
       .collection<WebsiteHosting>('WebsiteHosting')
       .updateOne({ _id: id }, { $set: { lockedAt } })
+  }
+
+  async publish(website: WebsiteHosting) {
+    const { db, client } = await this.databaseService.findAndConnect(
+      website.appid,
+    )
+    const session = client.startSession()
+
+    try {
+      await session.withTransaction(async () => {
+        const coll = db.collection(CN_PUBLISHED_WEBSITE_HOSTING)
+
+        await coll.deleteMany({ bucketName: website.bucketName }, { session })
+        await coll.insertOne(website, { session })
+      })
+    } finally {
+      await session.endSession()
+      await client.close()
+    }
+  }
+
+  async unpublish(website: WebsiteHosting) {
+    const { db, client } = await this.databaseService.findAndConnect(
+      website.appid,
+    )
+
+    try {
+      const coll = db.collection(CN_PUBLISHED_WEBSITE_HOSTING)
+      await coll.deleteMany({ bucketName: website.bucketName })
+    } finally {
+      await client.close()
+    }
   }
 }
